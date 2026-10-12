@@ -1,0 +1,15 @@
+target-version = "py311"
+line-length = 120
+
+extend-exclude = [
+    "kicomlib_gui.py",
+    "KiComLibClient/sexpdata.py",
+    "tmp",
+    "out",
+]
+
+[lint]
+# Syntax errors and pyflakes. Unused imports stay off: KiComLibClient/__init__.py
+# re-exports the public API, and several modules still import names they do not use.
+select = ["E9", "F"]
+ignore = ["F401"]
