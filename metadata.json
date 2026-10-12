@@ -1,0 +1,36 @@
+{
+    "$schema": "https://go.kicad.org/pcm/schemas/v1",
+    "name": "KiComLib Client",
+    "description": "Manage part data using an http library",
+    "description_full": "This plugin utilizes the new KiCad http library and extends it with a web component to manage part data like part number, manufacturer, distributor order number. It requires an Instance of https://heronitec-solutions.github.io/KiComLibServer/ .",
+    "identifier": "com.github.heronitec-solutions.kicomlib",
+    "type": "plugin",
+    "author": {
+        "name": "Heronitec Solutions GmbH",
+        "contact": {
+            "github": "https://github.com/heronitec-solutions",
+            "web": "https://www.heronitec-solutions.com"
+        }
+    },
+    "maintainer": {
+        "name": "Heronitec Solutions GmbH",
+        "contact": {
+            "github": "https://github.com/heronitec-solutions",
+            "web": "https://www.heronitec-solutions.com"
+        }
+    },
+    "license": "GPL-3.0",
+    "resources": {
+        "homepage": "https://github.com/heronitec-solutions/kicomlib"
+    },
+    "versions": [
+        {
+            "download_size": 73618,
+            "download_url": "https://github.com/heronitec-solutions/kicomlib/releases/download/v2.0.1/kicomlib.zip",
+            "install_size": 292212,
+            "version": "2.0.1",
+            "status": "stable",
+            "kicad_version": "10.0"
+        }
+    ]
+}
