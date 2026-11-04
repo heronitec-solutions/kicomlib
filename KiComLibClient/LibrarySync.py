@@ -248,7 +248,7 @@ def checkLibrary(config, progress_callback, finished_callback, force_remote=Fals
     try:
         changed_vars = ensureKiCadEnvVars(config['path_key'], config['output_path'])
         if changed_vars:
-            progress_callback(check_data, "Updated KiCad path variables: " + ", ".join(changed_vars), 0)
+            progress_callback(check_data, "KiCad path changes queued; close all KiCad windows, then reopen: " + ", ".join(changed_vars), 0)
     except Exception as e:
         print("Failed to check KiCad path variables:", e)
 
