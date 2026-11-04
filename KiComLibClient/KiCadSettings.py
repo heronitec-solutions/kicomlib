@@ -7,6 +7,7 @@ import os
 import re
 import sys
 from .sexpdata import loads, dumps, Symbol
+from .DeferredPaths import atomic_json, queue_changes, read_variables
 
 try:
     import pcbnew
@@ -96,146 +97,76 @@ def _isSamePath(path_a, path_b):
     return os.path.normcase(os.path.normpath(str(path_a))) == os.path.normcase(os.path.normpath(str(path_b)))
 
 
+def _readKiCadEnvVars():
+    return read_variables(GetKiCadSettingsCommonSettingsFile())
+
+
+def _writeKiCadEnvVars(before, after):
+    changes = {key: after.get(key) for key in before.keys() | after.keys()
+               if before.get(key) != after.get(key)}
+    if not changes:
+        return
+    config = GetKiCadSettingsCommonSettingsFile()
+    if pcbnew is not None:
+        # Writing the JSON here loses changes when KiCad saves its in-memory copy.
+        queue_changes(config, changes)
+    else:
+        # CLI callers must run with KiCad closed. Preserve unrelated settings.
+        with open(config, encoding="utf-8") as stream:
+            data = json.load(stream)
+        if not isinstance(data.get("environment"), dict):
+            data["environment"] = {}
+        data["environment"]["vars"] = after
+        atomic_json(config, data)
+
+
 def ensureKiCadEnvVars(lib_path_key, lib_base_path):
-    """Add missing path variables of a library to KiCad's config and correct those pointing to a different path.
-
-    Returns the names of the variables that were added or corrected.
-    """
-    config_file_path = GetKiCadSettingsCommonSettingsFile()
-
-    with open(config_file_path, 'r') as json_file:
-        data = json.load(json_file)
-
-    if not isinstance(data.get("environment"), dict):
-        data["environment"] = {}
-    vars_dict = data["environment"].get("vars")
-    if not isinstance(vars_dict, dict):
-        vars_dict = {}
-
+    """Queue missing/corrected paths; returns their names, including pending edits."""
+    before = _readKiCadEnvVars()
+    after = dict(before)
     changed = []
     for key, value in _getKiCadEnvVars(lib_path_key, lib_base_path).items():
-        if key not in vars_dict:
-            print(f"Adding missing path variable {key} = {value}")
-        elif not _isSamePath(vars_dict[key], value):
-            print(f"Correcting path variable {key}: {vars_dict[key]} -> {value}")
-        else:
-            continue
-        vars_dict[key] = value
-        changed.append(key)
-
-    if changed:
-        data["environment"]["vars"] = vars_dict
-        with open(config_file_path, 'w') as json_file:
-            json.dump(data, json_file, indent=4)
-
+        if key not in after or not _isSamePath(after[key], value):
+            after[key] = value
+            changed.append(key)
+    _writeKiCadEnvVars(before, after)
     return changed
 
 
 def addKiCadEnvVars(lib_path_key, lib_base_path):
-    config_file_path = GetKiCadSettingsCommonSettingsFile()
-
-    with open(config_file_path, 'r') as json_file:
-        data = json.load(json_file)
-
-    vars_dict = data.get("environment", {}).get("vars", {})
-    new_vars = _getKiCadEnvVars(lib_path_key, lib_base_path)
-
-    if vars_dict is None:
-        vars_dict = {}
-
-    # Only add variables that are not already configured, never overwrite existing ones
-    missing_vars = {key: value for key, value in new_vars.items() if key not in vars_dict}
-    if not missing_vars:
-        return False
-
-    vars_dict.update(missing_vars)
-    if not isinstance(data.get("environment"), dict):
-        data["environment"] = {}
-    data["environment"]["vars"] = vars_dict
-
-    with open(config_file_path, 'w') as json_file:
-        json.dump(data, json_file, indent=4)
-
-    return True
-
+    before = _readKiCadEnvVars()
+    after = dict(before)
+    for key, value in _getKiCadEnvVars(lib_path_key, lib_base_path).items():
+        after.setdefault(key, value)
+    _writeKiCadEnvVars(before, after)
+    return after != before
 
 
 def removeKiCadEnvVars(lib_path_key):
-    config_file_path = GetKiCadSettingsCommonSettingsFile()
-
-    with open(config_file_path, 'r') as json_file:
-        data = json.load(json_file)
-
-    vars_dict = data.get("environment", {}).get("vars", {})
-    keys_to_remove = [
-        f"{lib_path_key}_3DMODEL_DIR",
-        f"{lib_path_key}_BASE_PATH",
-        f"{lib_path_key}_DATASHEET_DIR",
-        f"{lib_path_key}_FOOTPRINT_DIR",
-        f"{lib_path_key}_SYMBOL_DIR",
-        f"{lib_path_key}_TEMPLATE_DIR",
-    ]
-
-    # Remove the keys if they exist
-    for key in keys_to_remove:
-        vars_dict.pop(key, None)
-
-    data["environment"]["vars"] = vars_dict
-
-    with open(config_file_path, 'w') as json_file:
-        json.dump(data, json_file, indent=4)
-
+    before = _readKiCadEnvVars()
+    after = dict(before)
+    for suffix in KIPART_VAR_SUFFIXES:
+        after.pop(f"{lib_path_key}_{suffix}", None)
+    _writeKiCadEnvVars(before, after)
 
 
 def renameKiCadEnvVars(lib_path_key_old, lib_path_key_new):
-    config_file_path = GetKiCadSettingsCommonSettingsFile()
-
-    with open(config_file_path, 'r') as json_file:
-        data = json.load(json_file)
-
-    vars_dict = data.get("environment", {}).get("vars", {})
-    keys_to_rename = [
-        "3DMODEL_DIR",
-        "BASE_PATH",
-        "DATASHEET_DIR",
-        "FOOTPRINT_DIR",
-        "SYMBOL_DIR",
-        "TEMPLATE_DIR",
-    ]
-
-    # Rename the keys
-    for suffix in keys_to_rename:
+    before = _readKiCadEnvVars()
+    after = dict(before)
+    for suffix in KIPART_VAR_SUFFIXES:
         old_key = f"{lib_path_key_old}_{suffix}"
-        new_key = f"{lib_path_key_new}_{suffix}"
-        if old_key in vars_dict:
-            vars_dict[new_key] = vars_dict.pop(old_key)
-
-    data["environment"]["vars"] = vars_dict
-
-    with open(config_file_path, 'w') as json_file:
-        json.dump(data, json_file, indent=4)
-
+        if old_key in after:
+            after[f"{lib_path_key_new}_{suffix}"] = after.pop(old_key)
+    _writeKiCadEnvVars(before, after)
 
 
 def updateKiCadEnvVars(lib_path_key, lib_base_path):
-    config_file_path = GetKiCadSettingsCommonSettingsFile()
-
-    with open(config_file_path, 'r') as json_file:
-        data = json.load(json_file)
-
-    vars_dict = data.get("environment", {}).get("vars", {})
-    keys_to_update = _getKiCadEnvVars(lib_path_key, lib_base_path)
-
-    # Update the base path for the keys
-    for key, new_value in keys_to_update.items():
-        if key in vars_dict:
-            vars_dict[key] = new_value
-
-    data["environment"]["vars"] = vars_dict
-
-    with open(config_file_path, 'w') as json_file:
-        json.dump(data, json_file, indent=4)
-
+    before = _readKiCadEnvVars()
+    after = dict(before)
+    for key, value in _getKiCadEnvVars(lib_path_key, lib_base_path).items():
+        if key in after:
+            after[key] = value
+    _writeKiCadEnvVars(before, after)
 
 
 def _getLibraryEntryValue(entry, key):

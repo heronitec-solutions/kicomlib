@@ -58,7 +58,31 @@ At the moment (KiCad v10.0) it's only possible to display a plugin icon in the P
 
 ### Missing Paths / Libraries
 
-KiComLib tries to add the required KiCad environment paths and libraries automatically. Because there is no cli method for that yet, KiComLib modifies the setting files manually. This sometimes fails when KiCad does work with the files at the same time. If you are missing paths or libraries, you can crate it manually.
+KiComLib queues changes to KiCad path variables instead of rewriting
+`kicad_common.json` while KiCad is running. KiCad keeps an in-memory copy of these
+settings and can overwrite direct file edits when it saves.
+
+After adding, changing, or removing a library, close **all** KiCad windows and
+editors. A detached Python worker applies the queued path changes once they exit.
+Wait for `KiComLib path setup complete` in
+`<KiCad settings directory>/.kicomlib-pending-paths/worker.log` before reopening
+KiCad. The worker merges only the changed path keys into the latest settings and
+backs up the original as `kicad_common.json.before-kicomlib-paths.bak`.
+
+This requires a runnable Python 3.9+ interpreter (the worker does not import KiCad
+or third-party modules). If the embedded interpreter has no executable, install
+Python and make `python3` or `python` available on PATH. Failures leave the pending
+changes intact; inspect `worker.log`. With KiCad closed, retry using:
+
+```sh
+python3 /path/to/plugin/KiComLibClient/DeferredPaths.py /path/to/kicad_common.json
+```
+
+The worker waits conservatively for KiCad processes from all users. A new KiCad
+session must not be started during setup. This fixes path-variable persistence;
+library-table registration still uses the existing file-based implementation.
+Existing installations missing paths can use **Check Library**, close KiCad, and
+wait for setup to finish. Manual configuration remains available below.
 
 #### Adding Paths manually
 

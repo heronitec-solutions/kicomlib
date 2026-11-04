@@ -11,12 +11,16 @@ import pcbnew
 if __name__ == '__main__':
     import kicomlib_gui
     import KiComLibClient
+    from KiComLibClient.DeferredPaths import pending_dir
+    from KiComLibClient.KiCadSettings import GetKiCadSettingsCommonSettingsFile
     from KiComLibClient.About import (
         CONTACT, GPL_URL, LICENSE_PARAGRAPHS, SERVER_LABELS, client_version, version_fields,
     )
 else:
     from . import kicomlib_gui
     from . import KiComLibClient
+    from .KiComLibClient.DeferredPaths import pending_dir
+    from .KiComLibClient.KiCadSettings import GetKiCadSettingsCommonSettingsFile
     from .KiComLibClient.About import (
         CONTACT, GPL_URL, LICENSE_PARAGRAPHS, SERVER_LABELS, client_version, version_fields,
     )
@@ -224,7 +228,9 @@ class KiComLibDialog ( kicomlib_gui.KiComLibGUI ):
             KiComLibClient.unregisterLibraryTables(cur_data['path_key'])
 
             # Update KiCad environment variables
-            KiComLibClient.removeKiCadEnvVars(cur_data['path_key'])
+            self._updateKiCadSettings(
+                lambda: KiComLibClient.removeKiCadEnvVars(cur_data['path_key'])
+            )
 
             self._settings.remove_current_library()
             self.updateLibraryList(0)
@@ -270,6 +276,13 @@ class KiComLibDialog ( kicomlib_gui.KiComLibGUI ):
     def _updateKiCadSettings(self, action):
         try:
             action()
+            if any(pending_dir(GetKiCadSettingsCommonSettingsFile()).glob("*.json")):
+                wx.MessageBox(
+                    "Path changes will be applied after KiCad exits. Close all KiCad windows "
+                    "and editors, wait for setup to finish, then reopen KiCad. "
+                    "See the README for setup status and troubleshooting.",
+                    "KiCad paths pending", wx.OK | wx.ICON_INFORMATION, self,
+                )
         except Exception as exc:
             wx.MessageBox(
                 "The library was saved, but KiCad's path variables could not be updated.\n\n" + str(exc),
